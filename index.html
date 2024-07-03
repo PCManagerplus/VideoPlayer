@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>シンプルな動画プレーヤー</title>
+  <!-- Materialize CSS CDN -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" rel="stylesheet">
+  <link rel="manifest" href="manifest.json">
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    body {
+      background: linear-gradient(to right, violet, indigo, blue, green, yellow, orange, red);
+      background-size: 400% 400%;
+      animation: gradientBG 15s ease infinite;
+    }
+
+    @keyframes gradientBG {
+      0% {
+        background-position: 0% 50%;
+      }
+      50% {
+        background-position: 100% 50%;
+      }
+      100% {
+        background-position: 0% 50%;
+      }
+    }
+
+    .container {
+      text-align: center;
+      background-color: rgba(255, 255, 255, 0.8);
+      padding: 20px;
+      border-radius: 10px;
+      max-width: 80%;
+      margin: auto;
+    }
+
+    h1 {
+      color: #333;
+    }
+
+    .file-field {
+      margin: 20px auto;
+    }
+
+    video {
+      width: 100%;
+      margin-top: 20px;
+    }
+
+    canvas {
+      margin-top: 20px;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>シンプルな動画プレーヤー</h1>
+  <div class="file-field input-field">
+    <div class="btn">
+      <span>アップロード</span>
+      <input type="file" id="video-file" accept="video/*">
+    </div>
+    <div class="file-path-wrapper">
+      <input class="file-path validate" type="text" placeholder="動画ファイルをアップロード">
+    </div>
+  </div>
+
+  <div class="volume-slider">
+    <label>音量</label>
+    <input type="range" class="volume-slider" id="volume" min="0" max="1" step="0.01" value="0.5">
+  </div>
+
+  <label>
+    <input type="checkbox" id="loop-toggle">
+    <span>ループ</span>
+  </label>
+  
+  <video id="video-player" controls></video>
+  <canvas id="spectrum"></canvas>
+</div>
+
+<!-- Materialize JavaScript CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('service-worker.js')
+      .then(registration => {
+        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+      })
+      .catch(error => {
+        console.log('ServiceWorker registration failed: ', error);
+      });
+  }
+
+  let deferredPrompt;
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    const installButton = document.createElement('button');
+    installButton.textContent = 'アプリをインストール';
+    installButton.classList.add('btn', 'install-button');
+    document.body.appendChild(installButton);
+
+    installButton.addEventListener('click', () => {
+      playClickSound();
+      installButton.remove();
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then((choiceResult) => {
+        if (choiceResult.outcome === 'accepted') {
+          console.log('User accepted the A2HS prompt');
+        } else {
+          console.log('User dismissed the A2HS prompt');
+        }
+        deferredPrompt = null;
+      });
+    });
+  });
+
+  const videoPlayer = document.getElementById('video-player');
+  const volumeSlider = document.getElementById('volume');
+  const canvas = document.getElementById('spectrum');
+  const ctx = canvas.getContext('2d');
+  
+  const clickSound = new Audio('https://pcmanagerplus.github.io/media.web/andTV/ui/pano_click.ogg');
+  
+  function playClickSound() {
+    clickSound.play();
+  }
+
+  function updateEqualizer() {
+    const audioContext = new AudioContext();
+    const sourceNode = audioContext.createMediaElementSource(videoPlayer);
+    const analyser = audioContext.createAnalyser();
+    const gainNode = audioContext.createGain();
+
+    sourceNode.connect(gainNode);
+    gainNode.connect(analyser);
+    analyser.connect(audioContext.destination);
+
+    canvas.width = canvas.parentNode.offsetWidth * 0.8;
+    canvas.height = 200;
+
+    function draw() {
+      requestAnimationFrame(draw);
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      analyser.getByteFrequencyData(dataArray);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const barWidth = (canvas.width / bufferLength) * 2.5;
+      let x = 0;
+
+      dataArray.forEach(function(data) {
+        const barHeight = data / 2;
+        ctx.fillStyle = 'rgb(' + (barHeight + 100) + ',50,50)';
+        ctx.fillRect(x, canvas.height - barHeight / 2, barWidth, barHeight);
+        x += barWidth + 1;
+      });
+    }
+
+    draw();
+
+    volumeSlider.addEventListener('input', function() {
+      const value = parseFloat(this.value);
+      gainNode.gain.value = value;
+    });
+  }
+
+  document.getElementById('video-file').addEventListener('change', function(event) {
+    const file = this.files[0];
+    const objectURL = URL.createObjectURL(file);
+    videoPlayer.src = objectURL;
+    updateEqualizer();
+  });
+
+  document.querySelector('.btn').addEventListener('click', playClickSound);
+
+  window.addEventListener('resize', function() {
+    canvas.width = canvas.parentNode.offsetWidth * 0.8;
+    canvas.height = 200;
+  });
+
+  document.getElementById('loop-toggle').addEventListener('change', function() {
+    videoPlayer.loop = this.checked;
+  });
+</script>
+
+</body>
+</html>
